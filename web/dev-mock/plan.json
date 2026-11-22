@@ -1,0 +1,40 @@
+{
+  "tasks": [
+    {
+      "id": "t1",
+      "title": "Wire up the Stripe Checkout session",
+      "prompt": "Create a Stripe Checkout session from the checkout page and handle the success and cancel redirects. If you need anything from a human (keys, decisions), write BLOCKED.md explaining what and stop.",
+      "acceptance": ["A Stripe test card completes checkout"],
+      "model": "opus",
+      "reason": "Cross-cutting: server, client and config",
+      "dependsOn": []
+    },
+    {
+      "id": "t2",
+      "title": "Fix checkout layout on mobile Safari",
+      "prompt": "Fix CHK-12. If you need anything from a human (keys, decisions), write BLOCKED.md explaining what and stop.",
+      "acceptance": ["Checkout renders and submits on mobile Safari"],
+      "model": "sonnet",
+      "reason": "Routine UI fix in one component",
+      "dependsOn": []
+    },
+    {
+      "id": "t3",
+      "title": "Turn on receipt emails",
+      "prompt": "Enable Stripe receipt emails for completed payments (CHK-14). If you need anything from a human (keys, decisions), write BLOCKED.md explaining what and stop.",
+      "acceptance": ["The buyer gets a receipt email"],
+      "model": "sonnet",
+      "reason": "Small change once the session exists",
+      "dependsOn": ["t1"]
+    },
+    {
+      "id": "t4",
+      "title": "Add tests for the checkout flow",
+      "prompt": "Add tests covering the checkout flow (CHK-15). If you need anything from a human (keys, decisions), write BLOCKED.md explaining what and stop.",
+      "acceptance": ["Checkout tests pass"],
+      "model": "sonnet",
+      "reason": "Routine once the flow is in place",
+      "dependsOn": ["t1", "t2"]
+    }
+  ]
+}

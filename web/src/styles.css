@@ -1,0 +1,921 @@
+/*
+  Max sits beside Codevisor, so it uses Codevisor's window colours and the
+  system font. Greys in small steps, hairlines instead of cards, and colour
+  only where it reports a status.
+*/
+
+:root {
+  color-scheme: light dark;
+
+  /* Codevisor's window background and raised surface. */
+  --bg: light-dark(#ffffff, #1e1e1e);
+  --bg-raised: light-dark(#f5f5f5, #262626);
+  --fill: light-dark(rgb(0 0 0 / 0.045), rgb(255 255 255 / 0.06));
+  --fill-strong: light-dark(rgb(0 0 0 / 0.08), rgb(255 255 255 / 0.1));
+  --line: light-dark(rgb(0 0 0 / 0.09), rgb(255 255 255 / 0.09));
+  --line-strong: light-dark(rgb(0 0 0 / 0.16), rgb(255 255 255 / 0.16));
+  --fg: light-dark(#1d1d1f, #f5f5f7);
+  --fg-2: light-dark(#6e6e73, #9a9a9e);
+  --fg-3: light-dark(#a1a1a6, #6a6a6e);
+
+  /* Status colours, taken from Codevisor's pull request palette. */
+  --working: light-dark(#9a6700, #d29922);
+  --review: light-dark(#0969da, #58a6ff);
+  --stuck: light-dark(#cf222e, #f85149);
+  --done: light-dark(#1a7f37, #3fb950);
+
+  --font:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter Variable", "Segoe UI", sans-serif;
+
+  --text-ui: 0.8125rem;
+  --text-meta: 0.75rem;
+  --medium: 510;
+  --semibold: 590;
+
+  --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-in: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: var(--text-ui);
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+p,
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+ul,
+ol {
+  list-style: none;
+}
+
+button,
+input {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+}
+
+button {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--fg) 55%, transparent);
+  outline-offset: 1px;
+}
+
+::selection {
+  background: var(--fill-strong);
+}
+
+.lucide {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  stroke-width: 1.75;
+}
+
+/* Frame: a toolbar, Max on top, the graph below. Built for half a screen. */
+
+.app {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  height: 100dvh;
+}
+
+/* The toolbar floats over the stage, so the blob gets the full height. */
+.toolbar {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 2.75rem;
+  padding: 0 0.625rem 0 1rem;
+}
+
+.wordmark {
+  font-weight: var(--semibold);
+}
+
+.wordmark::after {
+  content: "/";
+  margin: 0 0.5rem;
+  font-weight: 400;
+  color: var(--fg-3);
+}
+
+.toolbar h1 {
+  flex: 1;
+  min-width: 0;
+  font-weight: var(--medium);
+  color: var(--fg-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backend {
+  margin-right: 0.5rem;
+  font-size: var(--text-meta);
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+
+/* Controls */
+
+.icon-button {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.375rem;
+  color: var(--fg-2);
+  transition:
+    background 0.12s var(--ease),
+    color 0.12s var(--ease);
+}
+
+.icon-button:hover:not(:disabled),
+.icon-button[aria-pressed="true"] {
+  background: var(--fill);
+  color: var(--fg);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: none;
+  height: 2rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.5rem;
+  font-weight: var(--medium);
+  white-space: nowrap;
+  transition: background 0.12s var(--ease);
+}
+
+.button:hover {
+  background: var(--fill);
+}
+
+/* The main action is the text colour inverted, as in Conductor and ChatGPT. */
+.button.is-primary {
+  border-color: transparent;
+  background: var(--fg);
+  color: var(--bg);
+}
+
+.button.is-primary:hover {
+  background: color-mix(in srgb, var(--fg) 86%, var(--bg));
+}
+
+.empty {
+  color: var(--fg-3);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: var(--text-meta);
+  color: var(--fg-2);
+}
+
+.badge .lucide {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--status, var(--fg-3));
+}
+
+.is-working {
+  --status: var(--working);
+}
+
+.is-needs_review {
+  --status: var(--review);
+}
+
+.is-stuck,
+.is-error {
+  --status: var(--stuck);
+}
+
+.is-done {
+  --status: var(--done);
+}
+
+.is-working > .dot {
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.is-error > .dot {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--stuck);
+}
+
+/* Stage: Max, one caption, one row of controls. */
+
+.stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 0;
+  padding: 0 1.5rem 1.75rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.blob {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+}
+
+/* A fixed height, so a longer line never squeezes the blob. */
+.caption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: none;
+  height: 5.5rem;
+  max-width: 38rem;
+  text-align: center;
+}
+
+.caption h2 {
+  font-size: 1.375rem;
+  font-weight: var(--semibold);
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+.caption-label {
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+}
+
+.caption-text {
+  font-size: 1rem;
+  line-height: 1.45;
+  text-wrap: balance;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  animation: enter 0.25s var(--ease-in);
+}
+
+.caption-text.is-quiet {
+  color: var(--fg-2);
+}
+
+.caption-text.is-error {
+  color: var(--stuck);
+}
+
+.caption h2 + .caption-text {
+  font-size: 0.875rem;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: none;
+  margin-top: 0.75rem;
+}
+
+.controls .icon-button {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+}
+
+.hint {
+  position: absolute;
+  bottom: 0.4rem;
+  font-size: var(--text-meta);
+  color: var(--fg-3);
+}
+
+/* Transcript, in place of the blob */
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  max-width: 42rem;
+  min-height: 0;
+  margin-top: 2.75rem;
+  padding: 0.5rem 0 0.25rem;
+  overflow-y: auto;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  scrollbar-width: thin;
+  scrollbar-color: var(--fill-strong) transparent;
+}
+
+.say,
+.log,
+.note {
+  margin-top: 0.875rem;
+}
+
+.thread > :first-child {
+  margin-top: 0;
+}
+
+.say {
+  text-wrap: pretty;
+}
+
+/* Only the founder's turns are contained; Max reads like a document. */
+.say.is-user {
+  align-self: flex-end;
+  max-width: 80%;
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.875rem;
+  background: var(--fill);
+}
+
+.log {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr) auto;
+  column-gap: 0.75rem;
+  align-items: baseline;
+  font-size: var(--text-ui);
+}
+
+.log + .log {
+  margin-top: 0.2rem;
+}
+
+.log-step {
+  color: var(--fg-3);
+}
+
+.log-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-3);
+}
+
+.log-time .lucide {
+  width: 0.875rem;
+  height: 0.875rem;
+  color: var(--fg);
+}
+
+.note {
+  font-size: var(--text-ui);
+  color: var(--fg-2);
+}
+
+.note.is-error {
+  color: var(--stuck);
+}
+
+/* Board: the graph, or the decisions as a list. */
+
+.board {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  flex: none;
+  height: 2.5rem;
+  padding: 0 0.625rem;
+}
+
+.tabs button {
+  display: inline-flex;
+  gap: 0.375rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 0.375rem;
+  font-weight: var(--medium);
+  color: var(--fg-2);
+  transition:
+    background 0.12s var(--ease),
+    color 0.12s var(--ease);
+}
+
+.tabs button:hover {
+  color: var(--fg);
+}
+
+.tabs button[aria-selected="true"] {
+  background: var(--fill);
+  color: var(--fg);
+}
+
+.tabs button span {
+  font-weight: 400;
+  color: var(--fg-3);
+}
+
+.tabs .badge {
+  margin: 0 0.375rem 0 auto;
+}
+
+.graph-scroll,
+.decisions {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--fill-strong) transparent;
+}
+
+.status-line {
+  flex: none;
+  padding: 0 1rem;
+  border-top: 1px solid var(--line);
+  font-size: var(--text-meta);
+  line-height: 2rem;
+  color: var(--fg-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Graph: three columns joined by the links the data states. */
+
+.graph {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 2.75rem;
+  align-content: start;
+  max-width: 64rem;
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 0.25rem 1rem 1rem;
+}
+
+.graph section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+/* Dependencies loop past the right edge of the team column. */
+.graph-team {
+  padding-right: 1.75rem;
+}
+
+.graph h2 {
+  margin-bottom: 0.25rem;
+  font-size: var(--text-meta);
+  color: var(--fg-2);
+}
+
+.graph .empty {
+  font-size: var(--text-meta);
+}
+
+.graph-edges {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.graph-edges path {
+  fill: none;
+  stroke-width: 1;
+}
+
+.graph-edges g {
+  transition: opacity 0.12s var(--ease);
+}
+
+/* A new edge draws itself once, just after its node has landed. */
+.edge {
+  stroke: var(--line-strong);
+  stroke-dasharray: 1;
+  animation: draw 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.15s backwards;
+}
+
+/* Then one short dash runs along it: the moment the link was made. */
+.edge-signal {
+  stroke: var(--fg);
+  stroke-width: 1.5;
+  stroke-dasharray: 0.12 2;
+  stroke-dashoffset: 0.12;
+  animation: signal 0.7s cubic-bezier(0.3, 0, 0.3, 1) 0.55s forwards;
+}
+
+/* Work flowing into an agent: a single slow dash, not marching ants. */
+.edge-flow {
+  stroke: var(--fg-2);
+  stroke-width: 1.5;
+  stroke-dasharray: 0.08 0.92;
+  animation: flow 2.4s linear infinite;
+}
+
+.node {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.375rem;
+  background: var(--bg-raised);
+  transition: opacity 0.12s var(--ease);
+  animation: land 0.28s var(--ease-in) calc(var(--i) * 45ms) backwards;
+}
+
+.node-text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.node > .dot,
+.node > .issue-state {
+  align-self: center;
+}
+
+.node-key,
+.node-sub {
+  font-size: var(--text-meta);
+  color: var(--fg-2);
+}
+
+.node-key {
+  flex: none;
+}
+
+.node.is-stacked {
+  flex-wrap: wrap;
+  row-gap: 0.05rem;
+  padding-bottom: 0.35rem;
+}
+
+.node-sub {
+  flex-basis: 100%;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* Line the second row up under the title, past the status dot. */
+.dot ~ .node-sub {
+  padding-left: 0.9rem;
+}
+
+.node.is-called-out {
+  animation: call-out 1.2s ease-in-out infinite;
+}
+
+.node[data-dim] {
+  opacity: 0.35;
+}
+
+.graph-edges g[data-dim] {
+  opacity: 0.25;
+}
+
+.graph:has(.node:hover) g:not([data-dim]) .edge {
+  stroke: var(--fg-2);
+}
+
+.issue-state {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+  color: var(--fg-3);
+}
+
+.issue-state.is-started {
+  color: var(--working);
+}
+
+.issue-state.is-done {
+  color: var(--done);
+}
+
+/* Decisions: plain text you can edit in place. */
+
+.decisions {
+  padding: 0.25rem max(1rem, (100% - 40rem) / 2) 2rem;
+}
+
+.editable {
+  display: block;
+  margin: 0 -0.375rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  outline: none;
+  overflow-wrap: anywhere;
+}
+
+.editable[contenteditable="plaintext-only"] {
+  cursor: text;
+}
+
+.editable[contenteditable="plaintext-only"]:hover {
+  background: var(--fill);
+}
+
+.editable:focus {
+  background: var(--fill);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+.editable:empty::before {
+  content: attr(data-placeholder);
+  color: var(--fg-3);
+}
+
+.decisions-title {
+  font-size: 1.0625rem;
+  font-weight: var(--semibold);
+  letter-spacing: -0.015em;
+}
+
+.decisions-goal {
+  color: var(--fg-2);
+}
+
+.decisions h3 {
+  margin: 1rem 0 0.125rem;
+  font-size: var(--text-meta);
+  color: var(--fg-2);
+}
+
+.decisions li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+.decisions li .editable {
+  flex: 1;
+  min-width: 0;
+}
+
+.decisions li .icon-button {
+  width: 1.5rem;
+  height: 1.5rem;
+  opacity: 0;
+}
+
+.decisions li:hover .icon-button,
+.decisions li .icon-button:focus-visible {
+  opacity: 1;
+}
+
+/* Settings */
+
+.settings {
+  width: min(28rem, 100vw - 2rem);
+  padding: 0 1.25rem 1.25rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.75rem;
+  background: var(--bg-raised);
+  color: var(--fg);
+  box-shadow: 0 1rem 3rem rgb(0 0 0 / 0.35);
+}
+
+.settings::backdrop {
+  background: rgb(0 0 0 / 0.4);
+}
+
+.settings header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 3rem;
+  margin-right: -0.5rem;
+}
+
+.settings h2 {
+  font-size: 0.875rem;
+  font-weight: var(--semibold);
+}
+
+.settings h3 {
+  margin: 1rem 0 0.375rem;
+  font-size: var(--text-meta);
+  color: var(--fg-2);
+}
+
+.settings header + h3 {
+  margin-top: 0.25rem;
+}
+
+.setting-group {
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--bg);
+}
+
+.setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.setting + .setting {
+  border-top: 1px solid var(--line);
+}
+
+.setting small {
+  display: block;
+  font-size: var(--text-meta);
+  color: var(--fg-3);
+}
+
+.setting input {
+  flex: none;
+  width: 12.5rem;
+  height: 1.75rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.375rem;
+  background: var(--bg);
+}
+
+.setting input::placeholder {
+  color: var(--fg-3);
+}
+
+.setting input:disabled {
+  opacity: 0.5;
+}
+
+.switch {
+  flex: none;
+  width: 2.125rem;
+  height: 1.25rem;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--fill-strong);
+  transition: background 0.16s var(--ease);
+}
+
+.switch::after {
+  content: "";
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: light-dark(#fff, var(--fg-2));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+  transition:
+    translate 0.16s var(--ease),
+    background 0.16s var(--ease);
+}
+
+.switch[aria-checked="true"] {
+  background: var(--fg);
+}
+
+.switch[aria-checked="true"]::after {
+  translate: 0.875rem;
+  background: var(--bg);
+}
+
+.segmented {
+  display: flex;
+  padding: 2px;
+  border-radius: 0.4375rem;
+  background: var(--fill);
+}
+
+.segmented button {
+  padding: 0.125rem 0.625rem;
+  border-radius: 0.3125rem;
+  color: var(--fg-2);
+}
+
+.segmented button[aria-checked="true"] {
+  background: light-dark(#fff, var(--fill-strong));
+  color: var(--fg);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes land {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+
+@keyframes signal {
+  to {
+    stroke-dashoffset: -1;
+  }
+}
+
+@keyframes flow {
+  to {
+    stroke-dashoffset: -1;
+  }
+}
+
+@keyframes call-out {
+  50% {
+    border-color: var(--stuck);
+    background: color-mix(in srgb, var(--stuck) 14%, var(--bg-raised));
+  }
+}
+
+/* The graph still tells the whole story when nothing moves. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .edge-signal,
+  .edge-flow {
+    display: none;
+  }
+}

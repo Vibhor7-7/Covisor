@@ -1,0 +1,13 @@
+{
+  "brief": "Open Linear: CHK-12 checkout fails on mobile Safari, CHK-14 no receipt email after payment, CHK-15 add tests for the checkout flow. Last meeting (Thu): agreed on Stripe Checkout over Paddle, ship v1 this week.",
+  "linear": [
+    { "id": "iss_12", "key": "CHK-12", "title": "Checkout fails on mobile Safari", "state": "In Progress", "priority": 1 },
+    { "id": "iss_14", "key": "CHK-14", "title": "No receipt email after payment", "state": "Todo", "priority": 2 },
+    { "id": "iss_15", "key": "CHK-15", "title": "Add tests for the checkout flow", "state": "Backlog", "priority": 3 }
+  ],
+  "meeting": {
+    "title": "Checkout sync",
+    "date": "2026-11-19",
+    "summary": "Agreed on Stripe Checkout over Paddle. Ship v1 this week with card payments only. Receipts can use Stripe's built-in email."
+  }
+}
