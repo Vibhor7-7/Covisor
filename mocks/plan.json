@@ -1,0 +1,60 @@
+{
+  "runId": "run_20261122101500_demo",
+  "tasks": [
+    {
+      "id": "t1",
+      "title": "Switch payments to Stripe Checkout",
+      "prompt": "Goal: replace the fake card payment with Stripe Checkout (the hosted payment page). Decided in Thursday's sync: Stripe Checkout, not Paddle, and ship v1 this week.\n\nContext: Paper & Pine, a small shop in TypeScript on Bun with no framework and no runtime dependencies. Read CLAUDE.md first. Today src/payments.ts fakes charge(), src/checkout.ts validates the form, charges and stores the order, and web/checkout.html collects card details.\n\nDo:\n1. In src/payments.ts, add createCheckoutSession() and retrieveCheckoutSession() that call the Stripe REST API (https://api.stripe.com/v1/checkout/sessions) with fetch and STRIPE_TEST_KEY. No Stripe SDK: the repo has no dependencies.\n2. Change POST /api/checkout to validate email, name, address and items, store a pending order and return { url } for the session. Add GET /api/checkout/confirm?session_id=... that marks the order paid once Stripe reports the session paid.\n3. In web/checkout.html and web/checkout-page.ts, remove the card fields. The Pay button redirects to the returned url, and the confirmation view loads the order after the redirect back.\n4. Unit-test the new payment code with a stubbed fetch. A live run against Stripe test mode is a separate task (CHK-15).\n\nFiles: src/payments.ts, src/checkout.ts, src/server.ts, web/checkout.html, web/checkout-page.ts, src/payments.test.ts (new).\n\nConstraints: money stays integer cents. Never commit or print a key. Keep bun test passing.\n\nAcceptance:\n- Pay redirects to a Stripe Checkout Session for the cart total.\n- An order is marked paid only after Stripe reports the session paid, and only once.\n- No card fields left on our checkout page.\n- bun test passes.\n\nYou are on branch agent/t1 in your own worktree. Commit when bun test passes. Never push or merge.\nIf you need anything from a human (keys, decisions), write BLOCKED.md explaining what and stop.",
+      "acceptance": [
+        "Pay redirects to a Stripe Checkout Session for the cart total",
+        "An order is marked paid only after Stripe reports the session paid, and only once",
+        "No card fields left on our checkout page",
+        "bun test passes"
+      ],
+      "model": "opus",
+      "reason": "Cross-cutting payments change: server, checkout flow and page",
+      "dependsOn": []
+    },
+    {
+      "id": "t2",
+      "title": "Fix checkout on mobile (CHK-12)",
+      "prompt": "Goal: fix CHK-12, checkout fails on mobile. On phones and small tablets the checkout page is wider than the screen: the card fields are cut off and the order summary with the Pay button is off-screen, so customers cannot pay.\n\nContext: Paper & Pine, a small Bun shop with vanilla browser code in web/ and one stylesheet. Read CLAUDE.md first. Likely cause, confirm before fixing: .checkout in web/styles.css is a fixed two-column grid (1fr 340px) with no small-screen rule, and the card fields have fixed widths.\n\nDo:\n1. Reproduce at 375px wide: PORT=3105 bun run dev, then open /checkout.\n2. Below 900px (the store page breakpoint), stack the checkout in one column with the summary and Pay button after the form, and let the card fields shrink.\n3. Styles only. Another agent is replacing the card fields with Stripe Checkout in parallel, so do not change markup or checkout logic.\n\nFiles: web/styles.css.\n\nAcceptance:\n- No horizontal scroll on /checkout at 375px.\n- The Pay button is visible and tappable on a phone.\n- Desktop layout unchanged.\n- bun test passes.\n\nYou are on branch agent/t2 in your own worktree. Commit as \"CHK-12: ...\" when bun test passes. Never push or merge.\nIf you need anything from a human (keys, decisions), write BLOCKED.md explaining what and stop.",
+      "acceptance": [
+        "No horizontal scroll on /checkout at 375px",
+        "The Pay button is visible and tappable on a phone",
+        "Desktop layout unchanged",
+        "bun test passes"
+      ],
+      "model": "sonnet",
+      "reason": "Contained CSS fix in one stylesheet",
+      "dependsOn": []
+    },
+    {
+      "id": "t3",
+      "title": "Send email receipts (CHK-14)",
+      "prompt": "Goal: fix CHK-14. The confirmation page says \"A receipt is on its way\", but nothing is sent.\n\nContext: Paper & Pine, a small Bun shop. Read CLAUDE.md first. src/checkout.ts stores the order and has a TODO(CHK-14) where the receipt should go. No email provider is chosen yet.\n\nDo:\n1. Add src/email.ts with sendEmail(to, subject, html). For now it logs a one-line summary and keeps messages in an exported in-memory outbox that tests can read. Choosing a real provider is out of scope.\n2. Add src/receipts.ts with renderReceipt(order) returning { subject, html }: order id, line items, shipping, tax and total, formatted with formatPrice() from src/cart.ts.\n3. Send the receipt at the TODO(CHK-14). A failed send is logged and never fails the order.\n4. Another agent is moving payments to Stripe Checkout in parallel: keep your change to src/checkout.ts to that one call so it merges cleanly.\n\nFiles: src/email.ts (new), src/receipts.ts (new), src/receipts.test.ts (new), src/checkout.ts.\n\nAcceptance:\n- A successful checkout sends exactly one receipt to the order email.\n- The receipt shows order id, items and totals in dollars.\n- An email failure does not fail the checkout.\n- bun test passes.\n\nYou are on branch agent/t3 in your own worktree. Commit as \"CHK-14: ...\" when bun test passes. Never push or merge.\nIf you need anything from a human (keys, decisions), write BLOCKED.md explaining what and stop.",
+      "acceptance": [
+        "A successful checkout sends exactly one receipt to the order email",
+        "The receipt shows order id, items and totals in dollars",
+        "An email failure does not fail the checkout",
+        "bun test passes"
+      ],
+      "model": "sonnet",
+      "reason": "Routine: two small modules and one call where orders are stored",
+      "dependsOn": []
+    },
+    {
+      "id": "t4",
+      "title": "Add checkout tests (CHK-15)",
+      "prompt": "Goal: fix CHK-15. Cart and products have tests; checkout has none.\n\nContext: Paper & Pine, a small Bun shop with bun:test tests next to the code. Read CLAUDE.md first. Task t1 moved payments to Stripe Checkout (src/payments.ts, src/checkout.ts); start from its branch, agent/t1.\n\nDo:\n1. Add src/checkout.test.ts covering validation (every error carries the right field id), totals (free shipping threshold, tax, integer cents) and an unpaid session never producing a paid order.\n2. Add one test that creates a real Checkout Session in Stripe test mode with STRIPE_TEST_KEY from .env and checks the returned URL is on checkout.stripe.com. Do not skip it silently and do not fake the key: if it is missing, stop and ask.\n\nFiles: src/checkout.test.ts (new), src/payments.test.ts.\n\nAcceptance:\n- Validation, totals and the unpaid path are covered.\n- One test runs against Stripe test mode with STRIPE_TEST_KEY.\n- bun test passes.\n\nYou are on branch agent/t4 in your own worktree. Commit as \"CHK-15: ...\" when bun test passes. Never push or merge.\nIf you need anything from a human (keys, decisions), write BLOCKED.md explaining what and stop.",
+      "acceptance": [
+        "Validation, totals and the unpaid path are covered",
+        "One test runs against Stripe test mode with STRIPE_TEST_KEY",
+        "bun test passes"
+      ],
+      "model": "sonnet",
+      "reason": "Well-scoped tests, once the Stripe code from t1 exists",
+      "dependsOn": ["t1"]
+    }
+  ]
+}

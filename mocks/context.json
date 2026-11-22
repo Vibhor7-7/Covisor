@@ -1,0 +1,52 @@
+{
+  "brief": "Open Linear: CHK-12 checkout fails on mobile, CHK-14 no email receipts, CHK-15 add checkout tests. Also open but not urgent: CHK-16 slow product images, CHK-17 outdated README, CHK-9 dark mode. Last meeting (Thu, Checkout v1 sync): agreed on Stripe Checkout over Paddle, ship v1 this week. Stripe test keys are not in the dev env yet.",
+  "linear": [
+    {
+      "id": "7c1e2a4b-3f5d-4e8a-9b21-0d6c4a1f8e12",
+      "key": "CHK-12",
+      "title": "Checkout fails on mobile",
+      "state": "Todo",
+      "priority": 1
+    },
+    {
+      "id": "a93b5d10-8e2c-4f7b-b6a4-52e1c9d07f34",
+      "key": "CHK-14",
+      "title": "No email receipts",
+      "state": "Todo",
+      "priority": 2
+    },
+    {
+      "id": "e4f80c27-1b9a-4d3e-8c56-9a7b2e3d1c05",
+      "key": "CHK-15",
+      "title": "Add checkout tests",
+      "state": "Todo",
+      "priority": 2
+    },
+    {
+      "id": "2d6a9e81-c4b7-4a0f-9e13-6f5b8d2c7a96",
+      "key": "CHK-16",
+      "title": "Product images load slowly on the catalog page",
+      "state": "Backlog",
+      "priority": 3
+    },
+    {
+      "id": "5b0c3f72-9d1e-4c6a-a8f4-1e7d6b9a2c48",
+      "key": "CHK-17",
+      "title": "README setup steps are out of date",
+      "state": "Todo",
+      "priority": 4
+    },
+    {
+      "id": "c8e7d1a5-6f2b-4b9c-8d30-7a4e5f1b3c69",
+      "key": "CHK-9",
+      "title": "Dark mode for the storefront",
+      "state": "Backlog",
+      "priority": 4
+    }
+  ],
+  "meeting": {
+    "title": "Checkout v1 sync",
+    "date": "2026-11-19",
+    "summary": "Agreed on Stripe Checkout over Paddle: hosted payment page, less PCI scope, fastest path to launch. Goal is to ship checkout v1 this week. Still open: fix the three checkout bugs (CHK-12, CHK-14, CHK-15) first or ship around them. Action item: get Stripe test-mode keys into the dev env."
+  }
+}

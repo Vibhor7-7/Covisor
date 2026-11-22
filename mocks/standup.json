@@ -1,0 +1,41 @@
+{
+  "summary": "Four agents: two done, one needs review, one stuck. The tests agent is stuck: it needs a Stripe test key. Stripe Checkout is ready for your review. The mobile checkout fix and email receipts are done.",
+  "agents": [
+    {
+      "taskId": "t4",
+      "sessionId": "ses_01JDQ5F2H6N3",
+      "title": "Add checkout tests (CHK-15)",
+      "model": "sonnet",
+      "status": "stuck",
+      "detail": "Needs STRIPE_TEST_KEY to run the checkout tests against Stripe test mode.",
+      "lastActivityAt": "2026-11-22T11:52:10.000Z"
+    },
+    {
+      "taskId": "t1",
+      "sessionId": "ses_01JDQ3A7K2M9",
+      "title": "Switch payments to Stripe Checkout",
+      "model": "opus",
+      "status": "needs_review",
+      "detail": "+186 -42, 6 files",
+      "lastActivityAt": "2026-11-22T11:56:40.000Z"
+    },
+    {
+      "taskId": "t2",
+      "sessionId": "ses_01JDQ3A9P4R6",
+      "title": "Fix checkout on mobile (CHK-12)",
+      "model": "sonnet",
+      "status": "done",
+      "detail": "+31 -6, 1 file",
+      "lastActivityAt": "2026-11-22T11:12:30.000Z"
+    },
+    {
+      "taskId": "t3",
+      "sessionId": "ses_01JDQ3AB5T8W",
+      "title": "Send email receipts (CHK-14)",
+      "model": "sonnet",
+      "status": "done",
+      "detail": "+148 -2, 4 files",
+      "lastActivityAt": "2026-11-22T11:31:05.000Z"
+    }
+  ]
+}
