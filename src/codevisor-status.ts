@@ -192,6 +192,28 @@ export async function getPendingQuestion(sessionId: string): Promise<string | nu
   return text;
 }
 
+const replyCache = new Map<string, string | null>();
+
+/**
+ * The agent's last reply (GET /v1/agents/{id} lastReply). The session list leaves latestBotMessage
+ * empty, so this is the only full copy. turnKey (e.g. sidebarStateChangedAt) changes when a new turn
+ * ends, so a cached reply is reused until then. Never throws: errors give null (not cached).
+ */
+export async function getLastReply(sessionId: string, turnKey: string): Promise<string | null> {
+  const key = `${sessionId}|${turnKey}`;
+  if (replyCache.has(key)) return replyCache.get(key)!;
+  if (!config.codevisorToken) return null;
+  try {
+    const a = await getJson<{ lastReply?: unknown }>(`/v1/agents/${encodeURIComponent(sessionId)}`);
+    const text = typeof a?.lastReply === "string" && a.lastReply.trim() ? a.lastReply.slice(0, 12_000) : null;
+    replyCache.set(key, text);
+    if (replyCache.size > 200) replyCache.delete(replyCache.keys().next().value!);
+    return text;
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Events subscriber (secondary source)
 // ---------------------------------------------------------------------------------------------

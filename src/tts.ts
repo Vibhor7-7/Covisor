@@ -2,11 +2,11 @@
 //
 // API: POST https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream?output_format=mp3_44100_128
 //      headers xi-api-key, Content-Type: application/json; body { text, model_id }.
-// Env: ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID (via config), ELEVENLABS_MODEL_ID (optional,
-//      default eleven_flash_v2_5, the low-latency model).
+// Env: ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID (optional, default George, ElevenLabs' default voice),
+//      ELEVENLABS_MODEL_ID (optional, default eleven_flash_v2_5, the low-latency model).
 //
 // Error contract for the frontend (JSON body { error, code, ... }):
-//   503 code "tts_not_configured"  key or voice id missing. 503 is used for nothing else.
+//   503 code "tts_not_configured"  API key missing. 503 is used for nothing else.
 //   400 code "tts_bad_request"     empty or too long text.
 //   4xx code "tts_upstream_error"  ElevenLabs rejected the request; its status and message passed through.
 //   502 code "tts_upstream_error"  ElevenLabs 5xx, or unreachable / timed out.
@@ -14,6 +14,9 @@ import { config } from "./config";
 
 const API = "https://api.elevenlabs.io/v1/text-to-speech";
 const DEFAULT_MODEL = "eleven_flash_v2_5";
+// ElevenLabs' default voice ("George"). It is a premade voice, so it works on the free plan;
+// library voices return 402 there. Set ELEVENLABS_VOICE_ID to use another voice.
+const DEFAULT_VOICE = "JBFqnCBsd6RMkjVDRZzb";
 const OUTPUT_FORMAT = "mp3_44100_128"; // MP3 -> audio/mpeg
 const MAX_CHARS = 5_000; // narration lines are short; guard against burning credits
 const HEADERS_TIMEOUT_MS = 10_000; // only until the stream starts, never mid-stream
@@ -43,11 +46,14 @@ function upstreamMessage(raw: string): string {
 
 export async function synthesize(text: string): Promise<Response> {
   const apiKey = config.elevenLabsApiKey.trim();
-  const voiceId = config.elevenLabsVoiceId.trim();
-  if (!apiKey || !voiceId) {
-    const missing = [!apiKey && "ELEVENLABS_API_KEY", !voiceId && "ELEVENLABS_VOICE_ID"].filter(Boolean);
-    console.log(`[tts] skipped: ${missing.join(" and ")} not set`);
-    return json(503, { error: `TTS not configured: set ${missing.join(" and ")} in .env`, code: "tts_not_configured", missing });
+  const voiceId = config.elevenLabsVoiceId.trim() || DEFAULT_VOICE;
+  if (!apiKey) {
+    console.log(`[tts] skipped: ELEVENLABS_API_KEY not set`);
+    return json(503, {
+      error: "TTS not configured: set ELEVENLABS_API_KEY in .env",
+      code: "tts_not_configured",
+      missing: ["ELEVENLABS_API_KEY"],
+    });
   }
 
   const input = typeof text === "string" ? text.trim() : "";

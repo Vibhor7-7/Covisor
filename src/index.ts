@@ -9,6 +9,7 @@ import { getContext } from "./context";
 import { startBuild, killRun } from "./manager";
 import { getAgents, getStandup } from "./status";
 import { synthesize } from "./tts";
+import { jevSnapshot } from "./jev";
 import * as mock from "./mock";
 
 class BadRequest extends Error {}
@@ -79,6 +80,8 @@ export const app = new Elysia()
     sse(m ? mock.mockRunEvents(params.runId) : streamRun(params.runId), request.signal),
   )
   .get("/api/agents", async () => (m ? await mock.mockAgents() : await getAgents()))
+  // Jev's latest judgment per agent (probabilities, what it changed and why). Not part of the PRD contract.
+  .get("/api/agents/judgments", async () => jevSnapshot())
   .get("/api/standup", async () => (m ? await mock.mockStandup() : await getStandup()))
   .post("/api/tts", async ({ body }) => await synthesize((body as { text?: string } | undefined)?.text ?? ""))
   .post("/api/kill", async () => (m ? mock.mockKill() : killRun()));

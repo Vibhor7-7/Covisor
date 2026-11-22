@@ -10,6 +10,11 @@
 // a branch named after the task. Codevisor names branches codevisor/<worktreeName>.
 // Waiting-on-a-question details come from GET /v1/agents/{id} pendingQuestion.
 //
+// Jev (src/jev.ts, needs TYPESAFE_API_KEY): after the rules below, when an agent's turn has ended (or it
+// wrote BLOCKED.md), Jev reads its last reply and BLOCKED.md and may refine needs_review/stuck: a
+// confident "needs a person" makes it stuck with the agent's own sentence as detail; a confident
+// "finished, no changes needed" makes it needs_review. Unsure answers keep the rule's decision.
+//
 // Status rules, first match wins:
 //   queued        no session id for the task in sessions.json yet
 //   done          the task branch is merged into the base branch (its tip is reachable from base and
@@ -49,12 +54,14 @@ import { latestRunId, runDir } from "./runs";
 import type { Agent, AgentStatus, Plan, PlanTask, StandupResponse } from "./types";
 import {
   ensureEventsSubscriber,
+  getLastReply,
   getPendingQuestion,
   getSessionActivity,
   listSessions,
   type CvSession,
   type SessionActivity,
 } from "./codevisor-status";
+import { applyJudgment, jevEnabled, judge, recordJudgment, type Basis } from "./jev";
 
 const GIT_TIMEOUT_MS = 1500;
 
@@ -277,7 +284,7 @@ type Facts = {
   dirtyFiles: number;
   dirtyStat: string | null;
   dirtyMtime: number | null;
-  blocked: { line: string; mtime: number } | null;
+  blocked: { line: string; mtime: number; text: string } | null;
 };
 
 const NO_BRANCH = { ahead: 0, lastCommitAt: null, diffStat: null, merged: false, mergedStat: null };
@@ -330,13 +337,14 @@ function cleanLine(line: string): string {
     .trim();
 }
 
-function readBlocked(dir: string): { line: string; mtime: number } | null {
+function readBlocked(dir: string): { line: string; mtime: number; text: string } | null {
   for (const name of BLOCKED_NAMES) {
     const p = join(dir, name);
     if (!existsSync(p)) continue;
     let line = "";
+    let text = "";
     try {
-      const text = readFileSync(p, "utf8").slice(0, 8192);
+      text = readFileSync(p, "utf8").slice(0, 8192);
       for (const raw of text.split("\n")) {
         line = cleanLine(raw);
         if (line) break;
@@ -346,7 +354,7 @@ function readBlocked(dir: string): { line: string; mtime: number } | null {
     }
     if (line.length > 160) line = line.slice(0, 157).replace(/\s+\S*$/, "") + "...";
     if (line) line = line[0]!.toUpperCase() + line.slice(1);
-    return { line: line || `Blocked, see ${name}`, mtime: mtimeMs(p) ?? Date.now() };
+    return { line: line || `Blocked, see ${name}`, mtime: mtimeMs(p) ?? Date.now(), text: text.slice(0, 4000) };
   }
   return null;
 }
@@ -531,6 +539,65 @@ function decide(i: DecideInput): Decision {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Jev refinement (src/jev.ts): reads the agent's own words once its turn has ended
+// ---------------------------------------------------------------------------------------------
+
+/** The turn is over and Codevisor has no more precise signal (question, approval, error). */
+function turnEnded(s: CvSession): boolean {
+  return (
+    (s.sidebarState === "idle" || s.sidebarState === "unread") &&
+    !!s.updatedAt &&
+    !s.actionRequired &&
+    !s.pendingPlanApproval &&
+    !s.lastTurnFailure &&
+    !s.hasUnreadError &&
+    !s.isArchived
+  );
+}
+
+/** Which code-rule decisions Jev may refine. Queued, done, working, waiting and errors are left alone. */
+function jevBasis(d: Decision, session: CvSession | null, f: Facts): Basis | null {
+  if (d.status === "stuck" && f.blocked && d.detail === f.blocked.line) return "blocked_file";
+  if (session && turnEnded(session) && (d.status === "needs_review" || d.status === "stuck")) return "turn_ended";
+  return null;
+}
+
+async function refineWithJev(
+  d: Decision,
+  task: PlanTask,
+  sessionId: string,
+  session: CvSession | null,
+  f: Facts,
+  waitMs: number,
+): Promise<Decision> {
+  if (!jevEnabled()) return d;
+  const basis = jevBasis(d, session, f);
+  if (!basis) return d;
+  const lastMessage =
+    session && turnEnded(session)
+      ? ((await getLastReply(sessionId, session.sidebarStateChangedAt ?? session.updatedAt ?? "")) ?? "")
+      : "";
+  const judgment = await judge(
+    {
+      taskId: task.id,
+      taskTitle: task.title,
+      acceptance: task.acceptance,
+      lastMessage,
+      blockedNote: f.blocked?.text ?? "",
+      commitsAhead: f.ahead,
+      diffStat: f.diffStat,
+      uncommittedFiles: f.dirtyFiles,
+    },
+    waitMs,
+  );
+  if (!judgment) return d;
+  const applied = applyJudgment(d, judgment, { basis, hasChanges: f.ahead > 0 || f.dirtyFiles > 0 });
+  const final = { status: applied.status, detail: applied.detail };
+  recordJudgment({ taskId: task.id, basis, rule: d, final, changedBy: applied.changedBy, why: applied.why, judgment });
+  return final;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------------------------
 
@@ -593,6 +660,7 @@ async function agentFor(
   sessions: Map<string, CvSession>,
   apiError: string | null,
   now: number,
+  jevWaitMs: number,
 ): Promise<Agent> {
   const sessionId = run.sessions[task.id] ?? null;
   const base: Omit<Agent, "status" | "detail" | "lastActivityAt"> = {
@@ -626,7 +694,7 @@ async function agentFor(
     ].filter((n): n is number => typeof n === "number" && Number.isFinite(n));
     const lastActivity = signals.length ? Math.max(...signals) : null;
     const launchedAt = ts(session?.createdAt) ?? ts(launch?.launchedAt) ?? run.sessionsMtime ?? run.planMtime;
-    const d = decide({
+    const rule = decide({
       sessionId,
       session,
       act,
@@ -638,6 +706,7 @@ async function agentFor(
       launchedAt,
       now,
     });
+    const d = await refineWithJev(rule, task, sessionId, session, facts, jevWaitMs);
     let detail = d.detail;
     if (!ctx && (d.status === "working" || d.status === "stuck") && !facts.blocked && !session) {
       detail += " (demo repo not found, set DEMO_REPO)";
@@ -649,8 +718,13 @@ async function agentFor(
   }
 }
 
-/** One Agent per task of the latest run. Never throws; [] when there is no run. */
-export async function getAgents(): Promise<Agent[]> {
+/**
+ * One Agent per task of the latest run. Never throws; [] when there is no run.
+ * jevWaitMs: how long to wait for a fresh Jev judgment before answering with the code rule (the
+ * judgment still lands in the cache for the next poll). The board polls, so it waits briefly.
+ */
+export async function getAgents(opts: { jevWaitMs?: number } = {}): Promise<Agent[]> {
+  const jevWaitMs = opts.jevWaitMs ?? envMs("JEV_BOARD_WAIT_MS", 1500);
   let run: RunInfo | null = null;
   try {
     run = loadRun();
@@ -663,7 +737,9 @@ export async function getAgents(): Promise<Agent[]> {
       run.repo && anySession ? repoContext(run.repo) : Promise.resolve(null),
     ]);
     const r = run;
-    const agents = await Promise.all(r.tasks.map((t) => agentFor(t, r, ctx, list.sessions, list.error, now)));
+    const agents = await Promise.all(
+      r.tasks.map((t) => agentFor(t, r, ctx, list.sessions, list.error, now, jevWaitMs)),
+    );
 
     // Queued tasks: say what they wait for.
     const byId = new Map(agents.map((a) => [a.taskId, a]));
@@ -694,7 +770,8 @@ export async function getAgents(): Promise<Agent[]> {
 }
 
 export async function getStandup(): Promise<StandupResponse> {
-  const agents = await getAgents();
+  // Max speaks this once, so it is worth waiting for Jev to read every finished turn.
+  const agents = await getAgents({ jevWaitMs: envMs("JEV_STANDUP_WAIT_MS", 5000) });
   return { summary: summarize(agents), agents };
 }
 
@@ -710,13 +787,17 @@ const LEAD_VERBS = new Set(
     "rework rewrite restyle redesign harden optimize speed tidy upgrade bump"
   ).split(" "),
 );
-const FILLER = new Set(["a", "an", "the", "up", "new", "basic", "simple", "initial", "proper", "some"]);
+const FILLER = new Set([
+  "a", "an", "the", "up", "new", "basic", "simple", "initial", "proper", "some",
+  "stubbed", "stub", "fake", "mock", "dummy", "placeholder",
+]);
 const TAIL_NOUNS = new Set(
   "page component components feature flow logic module endpoint endpoints button toggle section screen view ui support functionality file files".split(
     " ",
   ),
 );
-const CUT = /\s+(?:for|to|with|in|on|using|via|from|into|so|that|when|across|by|of)\s+|\s*[:;,(\[]\s*|\s+[-–—]\s+/i;
+const CUT =
+  /\s+(?:for|to|with|in|on|using|via|from|into|so|that|when|across|by|of|after|before|until|once|if)\s+|\s*[:;,(\[]\s*|\s+[-–—]\s+/i;
 
 function tidyWords(text: string): string[] {
   return text
@@ -734,6 +815,12 @@ function capitalize(s: string): string {
 
 /** A short speakable name for a task title: "Write tests for the checkout flow" -> "Tests". */
 export function shortName(title: string): string {
+  // "Replace fake payment with Stripe Checkout" is about the new thing, not the old one.
+  const swap = /^\s*(?:replace|swap|switch|migrate|move|convert)\s+.+?\s+(?:with|to|for)\s+(.+)$/i.exec(title);
+  if (swap && swap[1]!.trim().split(/\s+/).length <= 4) title = swap[1]!;
+  // "Add checkout and Stripe test-mode tests" -> "Checkout tests": say what is being tested.
+  const tests = /^\s*(?:add|write|create|build)\s+(?:the\s+|some\s+)?([A-Za-z][\w-]*)\b.*\btests?\s*$/i.exec(title);
+  if (tests && !/^tests?$/i.test(tests[1]!)) return capitalize(`${tests[1]!.toLowerCase()} tests`);
   let words = tidyWords(title);
   while (words.length > 1 && (LEAD_VERBS.has(words[0]!.toLowerCase()) || FILLER.has(words[0]!.toLowerCase()))) words.shift();
   const head = words.join(" ").split(CUT)[0]!.trim();
@@ -801,6 +888,7 @@ function stuckSentence(name: string, detail: string): string {
   if ((m = /^Waiting for (?:you|your input)(?:: (.+))?$/.exec(detail))) {
     return sentence(`${name} is waiting for you${m[1] ? `: ${m[1]}` : ""}`);
   }
+  if ((m = /^Says: (.+)$/.exec(detail))) return `${name} is stuck. It says: ${sentence(m[1]!)}`;
   if ((m = /^Finished with no changes(?:: (.+))?$/.exec(detail))) {
     return m[1] ? `${name} stopped without changes. Its last message: ${sentence(m[1])}` : `${name} stopped without changes.`;
   }
