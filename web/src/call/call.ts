@@ -16,8 +16,8 @@ export type Call = {
   end: () => void;
   /** Passes Max a note mid-call without making it reply. */
   tell: (note: string) => void;
-  /** Frequency data for whoever is talking now. Empty when there is none. */
-  spectrum: () => Uint8Array;
+  /** Whoever is talking right now, as audio the blob can watch. */
+  sound: MediaStream | null;
 };
 
 export const CallContext = createContext<Call | null>(null);
@@ -27,5 +27,3 @@ export function useCall(): Call {
   if (!call) throw new Error("useCall must be used inside a call provider");
   return call;
 }
-
-export const NO_SPECTRUM = new Uint8Array(0);

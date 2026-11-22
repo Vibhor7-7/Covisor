@@ -100,11 +100,16 @@ function standup() {
   return { summary, agents: list };
 }
 
-// A soft hum shaped like speech (syllables, wandering pitch) and as long as the
-// line would take to say, so queueing can be heard and the blob has a voice.
+// First and second formant of "ah", "ee", "oo", "eh" and "oh".
+const VOWELS = [[800, 1200], [300, 2700], [350, 900], [500, 2000], [450, 1000]];
+
+// A babble as long as the line would take to say: a new vowel each syllable,
+// with a hiss now and then. It gives the blob the cues real speech would
+// (loudness, open and front vowels, sibilants, syllable onsets).
 function tone(text) {
   const rate = 16000;
   const samples = Math.round(rate * Math.min(4, Math.max(0.8, text.length * 0.055)));
+  const beat = Math.round(rate * 0.24);
   const wav = Buffer.alloc(44 + samples * 2);
   wav.write("RIFF", 0);
   wav.writeUInt32LE(36 + samples * 2, 4);
@@ -121,12 +126,24 @@ function tone(text) {
   let phase = 0;
   for (let i = 0; i < samples; i += 1) {
     const t = i / rate;
-    const syllable = Math.max(0, Math.sin(t * Math.PI * 4.2)) ** 0.6;
-    phase += (2 * Math.PI * (130 + 30 * Math.sin(t * 2.3) + 18 * Math.sin(t * 7.1))) / rate;
-    const voice =
-      Math.sin(phase) + 0.5 * Math.sin(2 * phase) + 0.3 * Math.sin(3 * phase) + 0.2 * Math.sin(5 * phase);
+    const syllable = Math.floor(i / beat);
+    const swell = Math.sin((Math.PI * (i % beat)) / beat) ** 0.7;
+    const pitch = 125 + 25 * Math.sin(t * 2.3) + 12 * Math.sin(t * 7.1);
+    phase += (2 * Math.PI * pitch) / rate;
+    let voice = 0;
+    if (syllable % 5 === 3) {
+      voice = (Math.random() * 2 - 1) * 1.6; // "s"
+    } else {
+      // Harmonics of the pitch, loudest near the vowel's two formants.
+      const [f1, f2] = VOWELS[(syllable * 3 + text.length) % VOWELS.length];
+      for (let h = 1; h * pitch < 4000; h += 1) {
+        const f = h * pitch;
+        const gain = Math.exp(-(((f - f1) / 130) ** 2)) + 0.6 * Math.exp(-(((f - f2) / 220) ** 2)) + 0.04 / h;
+        voice += gain * Math.sin(h * phase);
+      }
+    }
     const fade = Math.min(1, i / 800, (samples - i) / 800);
-    wav.writeInt16LE(Math.round(voice * 2200 * syllable * fade), 44 + i * 2);
+    wav.writeInt16LE(Math.round(voice * 2000 * swell * fade), 44 + i * 2);
   }
   return wav;
 }

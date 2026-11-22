@@ -34,16 +34,24 @@ open -na "Google Chrome" --args --app=http://localhost:5173
 
 ## The blob
 
-`src/components/Blob.tsx` is one WebGL fragment shader with no dependencies.
-It draws a soft 3D opal whose surface swells by direction, so the point under
-each pixel is solved in three steps rather than ray-marched (about 2 ms a frame
-on integrated graphics).
+`src/lib/talking-blob.js` is the approved Opal Talking Blob, copied in
+unchanged (WebGL2 and Web Audio, no dependencies). Do not edit its look or
+motion; `talking-blob.d.ts` beside it holds the types. It reads speech, not
+just volume: loudness swells it, "ah" stretches it tall, "ee" stretches it
+wide, "s" makes the rim glint, and each syllable gives it a jelly poke.
 
-- It moves with real audio: the ElevenLabs output and microphone during a call,
-  and the narration audio during a build (`src/audio.ts`).
-- Speaking warms it (peach and rose spread through the blues) and swells it;
-  listening cools and calms it; working alone turns it steadily.
-- Low notes move the big lobes and sharper sounds add finer folds.
+`src/components/Blob.tsx` mounts it and only decides what it listens to:
+
+- **Max speaking on a call**: the stream of the hidden `<audio>` element the
+  ElevenLabs SDK plays the agent through.
+- **Max listening on a call**: a second, analysis-only tap on the microphone
+  (never played back, and dropped while the mic is muted).
+- **Scripted call and build narration**: the clips from `/api/tts`, played by
+  `src/audio.ts`, which also offers them as a stream.
+- **Otherwise**: nothing, and the blob idles.
+
+The rim colour is set to the page background, so it follows the theme. Without
+WebGL2 a still CSS gradient in the same colours stands in.
 
 ## Settings
 
@@ -51,7 +59,8 @@ The gear in the toolbar. Values are saved in the browser; `.env.local` supplies
 the defaults (see `.env.example`).
 
 - **ElevenLabs agent ID**: empty plays a scripted call that drives the same
-  three client tools, so every view works offline.
+  three client tools and speaks Max's lines through the backend's `/api/tts`,
+  so every view works without an agent.
 - **Backend**: defaults to `http://localhost:3001`.
 - **Theme** and **Read the run log aloud**.
 

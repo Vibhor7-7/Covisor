@@ -1,11 +1,14 @@
 import { useMemo, useRef, useState } from "react";
+import * as api from "../api";
+import * as audio from "../audio";
 import { useMaxTools, useStore } from "../store";
-import { NO_SPECTRUM, type Call, type CallKind } from "./call";
+import type { Call, CallKind } from "./call";
 
 type Step = { who: "user" | "max"; text: string; spec?: Record<string, unknown> };
 
 // Stands in for the ElevenLabs agent until one is configured. It drives the
-// same client tools the real agent calls.
+// same client tools the real agent calls, and speaks Max's lines through the
+// backend's text to speech so the blob has a real voice to follow.
 const PLANNING: Step[] = [
   {
     who: "max",
@@ -60,8 +63,11 @@ const PLANNING: Step[] = [
   { who: "user", text: "Ship it." },
 ];
 
+/** How long a line takes to say when there is no audio to time it by. */
 const speakMs = (text: string) => Math.min(5200, Math.max(1100, text.length * 38));
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/** Max's line as audio, or null when the backend cannot speak. */
+const voice = (text: string) => api.tts(text).catch(() => null);
 
 export function useScriptedCall(): Call {
   const { dispatch } = useStore();
@@ -70,13 +76,11 @@ export function useScriptedCall(): Call {
   const [speaking, setSpeaking] = useState(false);
   const [muted, setMuted] = useState(false);
   const session = useRef(0);
-  const voiced = useRef(false);
-  const bins = useRef(new Uint8Array(48));
 
   return useMemo<Call>(() => {
     const end = () => {
       session.current += 1;
-      voiced.current = false;
+      audio.stop();
       setSpeaking(false);
       setStatus("idle");
     };
@@ -85,15 +89,20 @@ export function useScriptedCall(): Call {
       const id = (session.current += 1);
       const live = () => session.current === id;
 
-      const say = async ({ who, text, spec }: Step) => {
-        voiced.current = true;
-        setSpeaking(who === "max");
-        // Max's words arrive as the line starts; the founder's once they finish.
-        if (who === "max") dispatch({ type: "said", who, text });
-        await sleep(who === "max" ? speakMs(text) : speakMs(text) * 0.6);
+      const say = async ({ who, text, spec }: Step, clip?: Promise<Blob | null>) => {
+        if (who === "max") {
+          const spoken = await (clip ?? voice(text));
+          if (!live()) return;
+          setSpeaking(true);
+          dispatch({ type: "said", who, text });
+          const played = spoken && (await audio.play(spoken).then(() => true, () => false));
+          if (!played) await sleep(speakMs(text));
+        } else {
+          // The founder's words arrive once they have finished saying them.
+          await sleep(speakMs(text) * 0.6);
+          if (live()) dispatch({ type: "said", who, text });
+        }
         if (!live()) return;
-        if (who === "user") dispatch({ type: "said", who, text });
-        voiced.current = false;
         setSpeaking(false);
         if (spec) tools.updateSpec(spec);
         await sleep(450);
@@ -109,9 +118,13 @@ export function useScriptedCall(): Call {
         const summary = await tools.getStandup();
         if (live()) await say({ who: "max", text: summary });
       } else {
+        // Fetch every line up front so Max never pauses to find its voice.
+        const clips = new Map(
+          PLANNING.filter((step) => step.who === "max").map((step) => [step, voice(step.text)]),
+        );
         for (const step of PLANNING) {
           if (!live()) return;
-          await say(step);
+          await say(step, clips.get(step));
         }
         if (!live()) return;
         const result = await tools.startBuild({});
@@ -127,19 +140,6 @@ export function useScriptedCall(): Call {
       if (live()) end();
     };
 
-    // A stand-in for microphone and speaker levels, shaped like speech.
-    const spectrum = () => {
-      if (!voiced.current) return NO_SPECTRUM;
-      const t = performance.now() / 1000;
-      const envelope = 0.55 + 0.45 * Math.sin(t * 7.3) * Math.sin(t * 2.1 + 1);
-      const data = bins.current;
-      for (let i = 0; i < data.length; i += 1) {
-        const ripple = (Math.sin(t * 11 + i * 0.9) + Math.sin(t * 5.7 + i * 0.37) + 2) / 4;
-        data[i] = 255 * envelope * ripple * Math.exp(-i / 26);
-      }
-      return data;
-    };
-
     return {
       status,
       speaking,
@@ -150,7 +150,7 @@ export function useScriptedCall(): Call {
       start,
       end,
       tell: () => {},
-      spectrum,
+      sound: speaking ? audio.stream() : null,
     };
   }, [status, speaking, muted, dispatch, tools]);
 }

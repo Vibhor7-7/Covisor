@@ -269,10 +269,33 @@ button:disabled {
   border-bottom: 1px solid var(--line);
 }
 
+/* The blob draws on a transparent canvas that fills this box. It takes about
+   70% of the shorter side; the rest is room for its halo. */
 .blob {
+  position: relative;
   flex: 1;
   width: 100%;
   min-height: 0;
+}
+
+.blob canvas {
+  position: absolute;
+  inset: 0;
+}
+
+/* No WebGL2: a still gradient in the blob's own colours. */
+.blob.is-flat::before {
+  content: "";
+  position: absolute;
+  inset-block: 15%;
+  left: 50%;
+  aspect-ratio: 1;
+  translate: -50%;
+  border-radius: 46% 54% 50% 50%;
+  background:
+    radial-gradient(circle at 74% 24%, #ff8d4f, transparent 46%),
+    radial-gradient(circle at 24% 72%, #7fcbe8, transparent 52%),
+    radial-gradient(circle at 80% 66%, #8890cc, transparent 56%), #6aaed6;
 }
 
 /* A fixed height, so a longer line never squeezes the blob. */

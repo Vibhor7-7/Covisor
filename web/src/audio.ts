@@ -1,24 +1,33 @@
-// Plays narration through an analyser, so the blob can move with Max's voice.
+// Plays Max's spoken audio, and offers the same audio as a stream so the blob
+// can watch the voice while it plays.
 
 let context: AudioContext | null = null;
-let analyser: AnalyserNode | null = null;
+let tap: MediaStreamAudioDestinationNode | null = null;
 let playing: AudioBufferSourceNode | null = null;
-let bins = new Uint8Array(0);
+let cuts = 0;
+
+// Built on first use, which is always after a click: browsers keep an
+// AudioContext made earlier than that suspended.
+function graph() {
+  if (!context || !tap) {
+    context = new AudioContext();
+    tap = context.createMediaStreamDestination();
+  }
+  return { context, tap };
+}
 
 /** Plays one clip. Resolves when it ends or `stop` cuts it off. */
 export async function play(clip: Blob): Promise<void> {
-  if (!context || !analyser) {
-    context = new AudioContext();
-    analyser = context.createAnalyser();
-    analyser.fftSize = 1024;
-    analyser.connect(context.destination);
-    bins = new Uint8Array(analyser.frequencyBinCount);
-  }
+  const { context, tap } = graph();
+  const cut = cuts;
   await context.resume();
   const buffer = await context.decodeAudioData(await clip.arrayBuffer());
+  // `stop` was called while this clip was still decoding.
+  if (cut !== cuts) return;
   const source = context.createBufferSource();
   source.buffer = buffer;
-  source.connect(analyser);
+  source.connect(context.destination);
+  source.connect(tap);
   return new Promise((done) => {
     source.onended = () => {
       if (playing === source) playing = null;
@@ -30,12 +39,9 @@ export async function play(clip: Blob): Promise<void> {
 }
 
 export function stop() {
+  cuts += 1;
   playing?.stop();
 }
 
-/** Frequency data of the clip that is playing. Empty when nothing is. */
-export function spectrum(): Uint8Array {
-  if (!playing || !analyser) return bins.subarray(0, 0);
-  analyser.getByteFrequencyData(bins);
-  return bins;
-}
+/** Everything `play` plays, to analyse. It is not routed to the speakers. */
+export const stream = (): MediaStream => graph().tap.stream;
